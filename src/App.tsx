@@ -61,6 +61,7 @@ const App: React.FC = () => {
       .extent([[margin.left, margin.top], [width - margin.right, height - margin.bottom]]);
 
     const points = data.map(d => ({
+      ...d,
       x: x(d.bill_length_mm),
       y: y(d.bill_depth_mm),
       species: d.species
@@ -111,12 +112,15 @@ const App: React.FC = () => {
   };
 
   const animate = () => {
-    if (k < 100) {
-      setK(prevK => prevK + 1);
-      animationRef.current = requestAnimationFrame(animate);
-    } else {
-      setIsPlaying(false);
-    }
+    setK(prevK => {
+      if (prevK < 100) {
+        animationRef.current = requestAnimationFrame(animate);
+        return prevK + 1; // 使用函数式更新
+      } else {
+        setIsPlaying(false);
+        return prevK; // 不改变 k 的值
+      }
+    });
   };
 
   useEffect(() => {
@@ -184,7 +188,12 @@ const App: React.FC = () => {
           min="1"
           max="100"
           value={k}
-          onChange={(e) => setK(parseInt(e.target.value))}
+          onChange={(e) => {
+            const newValue = parseInt(e.target.value);
+            if (newValue <= 100) { // Ensure the value does not exceed max
+              setK(newValue);
+            }
+          }}
           className="w-64"
         />
         <span className="ml-2">{k}</span>
@@ -193,7 +202,7 @@ const App: React.FC = () => {
       
       <iframe
         ref={videoRef}
-        src="//player.bilibili.com/player.html?aid=YOUR_VIDEO_ID&page=1"
+        src="//player.bilibili.com/player.html?bvid=BV1nm411Q7vW&page=1&autoplay=0"
         scrolling="no"
         border="0"
         frameBorder="no"
