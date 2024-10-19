@@ -45,30 +45,52 @@ const App: React.FC = () => {
     svg.attr("width", width).attr("height", height);
 
     const x = d3.scaleLinear()
-      .domain([0, d3.max(data, d => d.bill_length_mm) as number])
+      .domain([d3.min(data, d => d.bill_length_mm) as number - 5, d3.max(data, d => d.bill_length_mm) as number + 5])
       .range([margin.left, width - margin.right]);
 
     const y = d3.scaleLinear()
-      .domain([0, d3.max(data, d => d.bill_depth_mm) as number])
+      .domain([d3.min(data, d => d.bill_depth_mm) as number - 5, d3.max(data, d => d.bill_depth_mm) as number + 5])
       .range([height - margin.bottom, margin.top]);
 
     const color = d3.scaleOrdinal(d3.schemeCategory10);
 
     const hexbinGenerator = hexbin()
-      .x(d => x(d.bill_length_mm))
-      .y(d => y(d.bill_depth_mm))
+      .x(d => x(d[0]))
+      .y(d => y(d[1]))
       .radius(10)
       .extent([[margin.left, margin.top], [width - margin.right, height - margin.bottom]]);
 
-    const points = data.map(d => ({
-      ...d,
-      x: x(d.bill_length_mm),
-      y: y(d.bill_depth_mm),
-      species: d.species
-    }));
+    // Limit the data to the first currentK points
+    const limitedData = data.slice(0, currentK);
+    const points = limitedData.map(d => [d.bill_length_mm, d.bill_depth_mm]);
 
     const bins = hexbinGenerator(points);
 
+    // Create a grid of hexagon centers
+    const hexPoints = hexbinGenerator.centers();
+
+    // Classify each hexagon center using KNN
+    const classifyPoint = (point: [number, number]) => {
+        const distances = limitedData.map(d => ({
+            species: d.species,
+            distance: Math.sqrt(Math.pow(d.bill_length_mm - point[0], 2) + Math.pow(d.bill_depth_mm - point[1], 2))
+        }));
+        distances.sort((a, b) => a.distance - b.distance);
+        const nearestNeighbors = distances.slice(0, currentK);
+        const speciesCount = d3.rollup(nearestNeighbors, v => v.length, d => d.species);
+        return Array.from(speciesCount).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+    };
+
+    // Draw the decision boundary using hexagons
+    svg.append("g")
+      .selectAll("path")
+      .data(hexPoints)
+      .enter().append("path")
+      .attr("d", hexbinGenerator.hexagon())
+      .attr("transform", d => `translate(${x(d[0])},${y(d[1])})`)
+      .attr("fill", d => color(classifyPoint(d)));
+
+    // Draw the hexbin visualization
     svg.append("g")
       .selectAll("path")
       .data(bins)
@@ -76,9 +98,9 @@ const App: React.FC = () => {
       .attr("d", hexbinGenerator.hexagon())
       .attr("transform", d => `translate(${d.x},${d.y})`)
       .attr("fill", d => {
-        const species = d3.group(d, d => d.species);
-        const maxSpecies = Array.from(species).reduce((a, b) => a[1].length > b[1].length ? a : b)[0];
-        return color(maxSpecies as string);
+          const speciesCount = d3.rollup(d, v => v.length, d => d.species);
+          const maxSpecies = Array.from(speciesCount).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+          return color(maxSpecies as string);
       })
       .attr("stroke", "#fff")
       .attr("stroke-width", "1px");
